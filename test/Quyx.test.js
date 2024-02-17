@@ -9,7 +9,7 @@ describe("Quyx", () => {
     [owner, user1, user2] = await ethers.getSigners();
 
     const Contract = await ethers.getContractFactory("Quyx");
-    const baseURL = "https://api.quyx.xyx/card/";
+    const baseURL = "https://api.quyx.xyz/card/";
     const contract = await Contract.connect(owner).deploy(baseURL);
     await contract.waitForDeployment();
     const contractAddress = contract.target;
