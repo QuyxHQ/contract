@@ -36,6 +36,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
 
     event CardListedForSale(
         uint256 indexed cardId,
+        uint256 indexed version,
         bool isAuction,
         uint256 listingPrice,
         uint256 maxNumberOfBids,
@@ -98,21 +99,28 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
 
     mapping(address => uint256) public balanceOf;
     mapping(address => uint256) public restrictedBalance;
-    // cardId -> (address -> bidId)
-    mapping(uint256 => mapping(address => uint256)) private _userBidOnCard;
+    // cardId -> version
+    mapping(uint256 => uint256) public currentVersion;
+    // cardId -> (version -> (address -> bidId))
+    mapping(uint256 => mapping(uint256 => mapping(address => uint256)))
+        private _userBidOnCard;
     // bidId -> bool
     mapping(uint256 => bool) private _isBidIdValid;
-    // cardId -> address
-    mapping(uint256 => address) private _highestBidderOnCard;
-    // cardId -> Bids
-    mapping(uint256 => Bid[]) private _bids;
+    // cardId -> (version -> address)
+    mapping(uint256 => mapping(uint256 => address))
+        private _highestBidderOnCard;
+    // cardId -> (version -> Bids)
+    mapping(uint256 => mapping(uint256 => Bid[])) private _bids;
     mapping(uint256 => bool) public isCardListed;
     // cardId -> ListedCard{...}
     mapping(uint256 => ListedCard) private _listedCards;
     mapping(address => uint256[]) private _cardsOf;
     mapping(uint256 => address) private _ownerOf;
 
-    constructor(string memory _baseURL) Ownable(msg.sender) {
+    constructor(
+        string memory _baseURL,
+        address inititalOwner
+    ) Ownable(inititalOwner) {
         isPaused = false;
         setBaseURI(_baseURL);
     }
@@ -165,43 +173,44 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         return _ownerOf[cardId];
     }
 
-    function listedCard(uint256 cardId)
-        public
-        view
-        returns (ListedCard memory)
-    {
+    function listedCard(
+        uint256 cardId
+    ) public view returns (ListedCard memory) {
         _requireCardToBeOwned(cardId);
 
         return _listedCards[cardId];
     }
 
     function bids(uint256 cardId) public view returns (Bid[] memory) {
-        return _bids[cardId];
+        return _bids[cardId][currentVersion[cardId]];
     }
 
     function highestBidder(uint256 cardId) public view returns (Bid memory) {
-        uint256 bidId = _userBidOnCard[cardId][_highestBidderOnCard[cardId]];
-        if (_isBidIdValid[bidId]) return _bids[cardId][bidId];
+        uint256 bidId = _userBidOnCard[cardId][currentVersion[cardId]][
+            _highestBidderOnCard[cardId][currentVersion[cardId]]
+        ];
+
+        if (_isBidIdValid[bidId]) {
+            return _bids[cardId][currentVersion[cardId]][bidId];
+        }
 
         return Bid(0, address(0), address(0), 0, block.timestamp);
     }
 
-    function userBidOnCard(uint256 cardId, address user)
-        public
-        view
-        returns (Bid memory)
-    {
-        uint256 bidId = _userBidOnCard[cardId][user];
-        if (_isBidIdValid[bidId]) return _bids[cardId][bidId];
+    function userBidOnCard(
+        uint256 cardId,
+        address user
+    ) public view returns (Bid memory) {
+        uint256 bidId = _userBidOnCard[cardId][currentVersion[cardId]][user];
+        if (_isBidIdValid[bidId])
+            return _bids[cardId][currentVersion[cardId]][bidId];
 
         return Bid(0, address(0), address(0), 0, block.timestamp);
     }
 
-    function _requireCardToBeOwned(uint256 cardId)
-        internal
-        view
-        returns (address)
-    {
+    function _requireCardToBeOwned(
+        uint256 cardId
+    ) internal view returns (address) {
         address owner = ownerOf(cardId);
         if (owner == address(0)) revert CardDoesNotExist(cardId);
 
@@ -309,9 +318,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         );
 
         isCardListed[cardId] = true;
+        currentVersion[cardId] += 1;
 
         emit CardListedForSale(
             cardId,
+            currentVersion[cardId],
             isAuction,
             listingPrice,
             maxNumberOfBids,
@@ -365,7 +376,9 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     }
 
     function _endAuction(uint256 cardId) internal {
-        address _highestBidder = _highestBidderOnCard[cardId];
+        address _highestBidder = _highestBidderOnCard[cardId][
+            currentVersion[cardId]
+        ];
         ListedCard memory Card = listedCard(cardId);
 
         if (_highestBidder != address(0)) {
@@ -407,17 +420,26 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         require(msg.value >= Card.listingPrice, "amount less than price");
         require(Card.end > block.timestamp, "Auction has ended");
         require(
-            Card.maxNumberOfBids <= _bids[cardId].length,
+            Card.maxNumberOfBids <=
+                _bids[cardId][currentVersion[cardId]].length,
             "max number of bids reached"
         );
 
-        uint256 _bidId = _userBidOnCard[cardId][msg.sender];
+        uint256 _bidId = _userBidOnCard[cardId][currentVersion[cardId]][
+            msg.sender
+        ];
         if (!_isBidIdValid[_bidId]) _bidId = ++_totalBids;
-        Bid memory senderCurrentBid = _bids[cardId][_bidId];
+        Bid memory senderCurrentBid = _bids[cardId][currentVersion[cardId]][
+            _bidId
+        ];
 
-        if (_highestBidderOnCard[cardId] != address(0)) {
-            Bid memory bid = _bids[cardId][
-                _userBidOnCard[cardId][_highestBidderOnCard[cardId]]
+        if (
+            _highestBidderOnCard[cardId][currentVersion[cardId]] != address(0)
+        ) {
+            Bid memory bid = _bids[cardId][currentVersion[cardId]][
+                _userBidOnCard[cardId][currentVersion[cardId]][
+                    _highestBidderOnCard[cardId][currentVersion[cardId]]
+                ]
             ];
 
             require(
@@ -430,7 +452,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
             ? FALLBACK_REFERRAL_ADDRESS
             : referral;
 
-        _highestBidderOnCard[cardId] = msg.sender;
+        _highestBidderOnCard[cardId][currentVersion[cardId]] = msg.sender;
         restrictedBalance[msg.sender] = restrictedBalance[msg.sender].add(
             msg.value
         );
@@ -438,11 +460,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         balanceOf[msg.sender] = balanceOf[msg.sender].add(msg.value);
 
         if (!_isBidIdValid[_bidId]) {
-            _userBidOnCard[cardId][msg.sender] = _bidId;
+            _userBidOnCard[cardId][currentVersion[cardId]][msg.sender] = _bidId;
             _isBidIdValid[_bidId] = true;
         }
 
-        _bids[cardId][_bidId] = Bid(
+        _bids[cardId][currentVersion[cardId]][_bidId] = Bid(
             cardId,
             msg.sender,
             referredBy,
@@ -450,7 +472,9 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
             block.timestamp
         );
 
-        if (_bids[cardId].length == Card.maxNumberOfBids) _endAuction(cardId);
+        if (
+            _bids[cardId][currentVersion[cardId]].length == Card.maxNumberOfBids
+        ) _endAuction(cardId);
 
         emit BidPlaced(
             msg.sender,
@@ -471,26 +495,29 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     function withdrawFromAuction(uint256 cardId) public {
         require(isCardListed[cardId], "card not listed");
         require(
-            _highestBidderOnCard[cardId] != msg.sender,
+            _highestBidderOnCard[cardId][currentVersion[cardId]] != msg.sender,
             "you as the highest bidder cannot withdraw funds"
         );
         require(
-            _isBidIdValid[_userBidOnCard[cardId][msg.sender]],
+            _isBidIdValid[
+                _userBidOnCard[cardId][currentVersion[cardId]][msg.sender]
+            ],
             "you don't have a bid on card"
         );
 
-        Bid memory bid = _bids[cardId][_userBidOnCard[cardId][msg.sender]];
+        Bid memory bid = _bids[cardId][currentVersion[cardId]][
+            _userBidOnCard[cardId][currentVersion[cardId]][msg.sender]
+        ];
         restrictedBalance[msg.sender] = restrictedBalance[msg.sender].sub(
             bid.amount
         );
         balanceOf[msg.sender] = balanceOf[msg.sender].add(bid.amount);
     }
 
-    function emergencyWithdrawal(address to, uint256 amount)
-        public
-        onlyOwner
-        nonReentrant
-    {
+    function emergencyWithdrawal(
+        address to,
+        uint256 amount
+    ) public onlyOwner nonReentrant {
         _withdraw(to, amount);
     }
 
