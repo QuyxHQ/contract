@@ -117,10 +117,9 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     mapping(address => uint256[]) private _cardsOf;
     mapping(uint256 => address) private _ownerOf;
 
-    constructor(
-        string memory _baseURL,
-        address inititalOwner
-    ) Ownable(inititalOwner) {
+    constructor(string memory _baseURL, address inititalOwner)
+        Ownable(inititalOwner)
+    {
         isPaused = false;
         setBaseURI(_baseURL);
     }
@@ -173,9 +172,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         return _ownerOf[cardId];
     }
 
-    function listedCard(
-        uint256 cardId
-    ) public view returns (ListedCard memory) {
+    function listedCard(uint256 cardId)
+        public
+        view
+        returns (ListedCard memory)
+    {
         _requireCardToBeOwned(cardId);
 
         return _listedCards[cardId];
@@ -197,10 +198,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         return Bid(0, address(0), address(0), 0, block.timestamp);
     }
 
-    function userBidOnCard(
-        uint256 cardId,
-        address user
-    ) public view returns (Bid memory) {
+    function userBidOnCard(uint256 cardId, address user)
+        public
+        view
+        returns (Bid memory)
+    {
         uint256 bidId = _userBidOnCard[cardId][currentVersion[cardId]][user];
         if (_isBidIdValid[bidId])
             return _bids[cardId][currentVersion[cardId]][bidId];
@@ -208,9 +210,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         return Bid(0, address(0), address(0), 0, block.timestamp);
     }
 
-    function _requireCardToBeOwned(
-        uint256 cardId
-    ) internal view returns (address) {
+    function _requireCardToBeOwned(uint256 cardId)
+        internal
+        view
+        returns (address)
+    {
         address owner = ownerOf(cardId);
         if (owner == address(0)) revert CardDoesNotExist(cardId);
 
@@ -514,10 +518,11 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         balanceOf[msg.sender] = balanceOf[msg.sender].add(bid.amount);
     }
 
-    function emergencyWithdrawal(
-        address to,
-        uint256 amount
-    ) public onlyOwner nonReentrant {
+    function emergencyWithdrawal(address to, uint256 amount)
+        public
+        onlyOwner
+        nonReentrant
+    {
         _withdraw(to, amount);
     }
 
@@ -533,7 +538,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         _withdraw(msg.sender, amount);
     }
 
-    function _withdraw(address to, uint256 amount) internal nonReentrant {
+    function _withdraw(address to, uint256 amount) internal {
         if (isPaused) {
             require(
                 msg.sender == owner() ||
@@ -551,4 +556,6 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         (bool success, ) = to.call{value: amount}("");
         require(success, "Unable to send funds");
     }
+
+    receive() external payable {}
 }
