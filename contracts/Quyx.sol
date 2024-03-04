@@ -7,17 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-interface IErrors {
-    error CardDoesNotExist(uint256 cardId);
-
-    error InvalidAddress(address sender);
-
-    error UnAuthorized(address expected, address got);
-
-    error UnRealisticDate(uint256 timestamp);
-}
-
-contract Quyx is Ownable, ReentrancyGuard, IErrors {
+contract Quyx is Ownable, ReentrancyGuard {
     using Strings for uint256;
     using SafeMath for uint256;
 
@@ -117,9 +107,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     mapping(address => uint256[]) private _cardsOf;
     mapping(uint256 => address) private _ownerOf;
 
-    constructor(string memory _baseURL, address inititalOwner)
-        Ownable(inititalOwner)
-    {
+    constructor(string memory _baseURL) Ownable(msg.sender) {
         isPaused = false;
         setBaseURI(_baseURL);
     }
@@ -216,7 +204,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         returns (address)
     {
         address owner = ownerOf(cardId);
-        if (owner == address(0)) revert CardDoesNotExist(cardId);
+        require(owner != address(0), "card does not exist");
 
         return owner;
     }
@@ -231,7 +219,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     }
 
     function newCard(string memory tempToken) public payable {
-        if (msg.sender == address(0)) revert InvalidAddress(address(0));
+        require(msg.sender != address(0), "msg.sender is zero address");
 
         uint256 cardId = ++_totalCards;
         uint256 userCardsCount = _cardsOf[msg.sender].length;
@@ -268,10 +256,10 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
         address _owner = _requireCardToBeOwned(cardId);
 
         require(!isCardListed[cardId], "cannot delete listed card");
-
-        if (_owner != msg.sender || msg.sender != owner()) {
-            revert UnAuthorized(_owner, msg.sender);
-        }
+        require(
+            _owner == msg.sender || msg.sender == owner(),
+            "cannot delete another user card"
+        );
 
         _removeCardIdFromAddress(cardId, _owner);
         _ownerOf[cardId] = address(0);
@@ -306,8 +294,8 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     ) public {
         address _owner = _requireCardToBeOwned(cardId);
 
-        if (_owner != msg.sender) revert UnAuthorized(_owner, msg.sender);
-        if (isAuction && end <= block.timestamp) revert UnRealisticDate(end);
+        require(_owner == msg.sender, "cannot delete another user card");
+        if (isAuction) require(end <= block.timestamp, "unrealistic date");
         require(!isCardListed[cardId], "card already lsited");
 
         _listedCards[cardId] = ListedCard(
@@ -344,9 +332,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     }
 
     function buyCard(uint256 cardId, address referral) public payable {
-        if (msg.sender == address(0)) {
-            revert InvalidAddress(address(0));
-        }
+        require(msg.sender != address(0), "msg.sender is zero address");
 
         ListedCard memory Card = listedCard(cardId);
         require(Card.isActive, "card sold already");
@@ -414,9 +400,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     }
 
     function placeBid(uint256 cardId, address referral) public payable {
-        if (msg.sender == address(0)) {
-            revert InvalidAddress(address(0));
-        }
+        require(msg.sender != address(0), "msg.sender is zero address");
 
         ListedCard memory Card = listedCard(cardId);
         require(Card.isActive, "card sold already");
@@ -527,9 +511,7 @@ contract Quyx is Ownable, ReentrancyGuard, IErrors {
     }
 
     function withdraw(uint256 amount) public whenNotPaused nonReentrant {
-        if (msg.sender == address(0)) {
-            revert InvalidAddress(address(0));
-        }
+        require(msg.sender != address(0), "msg.sender is zero address");
 
         uint256 _balance = spendingBalanceOf(msg.sender);
         require(_balance >= amount, "Insufficient balance");
