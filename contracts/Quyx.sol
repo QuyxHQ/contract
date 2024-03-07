@@ -295,7 +295,7 @@ contract Quyx is Ownable, ReentrancyGuard {
         address _owner = _requireCardToBeOwned(cardId);
 
         require(_owner == msg.sender, "cannot delete another user card");
-        if (isAuction) require(end <= block.timestamp, "unrealistic date");
+        if (isAuction) require(end >= block.timestamp, "unrealistic date");
         require(!isCardListed[cardId], "card already lsited");
 
         _listedCards[cardId] = ListedCard(
